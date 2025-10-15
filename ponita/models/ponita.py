@@ -18,6 +18,7 @@ def Ponita(input_dim, hidden_dim, output_dim, num_layers, output_dim_vec = 0, ra
            num_ori=20, basis_dim=None, degree=3, widening_factor=4, layer_scale=None,
            task_level='graph', multiple_readouts=True, lift_graph=False, **kwargs):
     # Select either FiberBundle mode or PointCloud mode
+    
     PonitaClass = PonitaFiberBundle if (num_ori > 0) else PonitaPointCloud
     # Return the ponita object
     return PonitaClass(input_dim, hidden_dim, output_dim, num_layers, output_dim_vec = output_dim_vec, 
@@ -87,6 +88,7 @@ class PonitaFiberBundle(nn.Module):
     def forward(self, graph):
         # Lift and compute invariants - lifts to number of orientations 
         graph = self.transform(graph)
+
 
 
         # Sample the kernel basis and window the spatial kernel with a smooth cut-off

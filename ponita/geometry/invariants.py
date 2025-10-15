@@ -16,6 +16,9 @@ def invariant_attr_r3s2_fiber_bundle(pos, ori_grid, edge_index, separable=False)
     ori_grid_a = ori_grid[None,:,:]                                               # [1, num_ori, 3]
     ori_grid_b = ori_grid[:, None,:]                                              # [num_ori, 1, 3]
 
+    print("Ori Grid A Shape:", ori_grid_a.shape)
+    print("Relative Position Shape:", rel_pos.shape)
+
     invariant1 = (rel_pos * ori_grid_a).sum(dim=-1, keepdim=True)                 # [num_edges, num_ori, 1]
     invariant2 = (rel_pos - invariant1 * ori_grid_a).norm(dim=-1, keepdim=True)   # [num_edges, num_ori, 1]
     invariant3 = (ori_grid_a * ori_grid_b).sum(dim=-1, keepdim=True)              # [num_ori, num_ori, 1]

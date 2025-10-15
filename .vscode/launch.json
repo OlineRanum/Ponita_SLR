@@ -1,0 +1,67 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug main_isr.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main_isr.py",
+            "args": [
+                "--epochs", "5",
+                "--batch_size", "16",
+                "--lr", "5e-3",
+                "--num_workers", "2",
+                "--gpus", "1",
+                "--log", "False",
+                "--enable_progress_bar", "True",
+                "--seed", "42"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+                "CUDA_VISIBLE_DEVICES": "0"
+            },
+            "justMyCode": false,
+            "stopOnEntry": false
+        },
+        {
+            "name": "Debug main_isr.py (CPU only)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main_isr.py",
+            "args": [
+                "--epochs", "2",
+                "--batch_size", "8",
+                "--lr", "5e-3",
+                "--num_workers", "1",
+                "--gpus", "0",
+                "--log", "False",
+                "--enable_progress_bar", "True",
+                "--seed", "42"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "justMyCode": false,
+            "stopOnEntry": false
+        },
+        {
+            "name": "Debug main_isr.py (Custom args)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main_isr.py",
+            "args": [],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+                "CUDA_VISIBLE_DEVICES": "0"
+            },
+            "justMyCode": false,
+            "stopOnEntry": false
+        }
+    ]
+}

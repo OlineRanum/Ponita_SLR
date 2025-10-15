@@ -26,13 +26,13 @@ if __name__ == "__main__":
 
     
     # Run parameters
-    parser.add_argument('--epochs', type=int, default=100,
+    parser.add_argument('--epochs', type=int, default=500,
                         help='number of epochs')
-    parser.add_argument('--warmup', type=int, default=100,
+    parser.add_argument('--warmup', type=int, default=20,
                         help='number of epochs')
-    parser.add_argument('--batch_size', type=int, default=32,
+    parser.add_argument('--batch_size', type=int, default=64,
                         help='Batch size. Does not scale with number of gpus.')
-    parser.add_argument('--lr', type=float, default=5e-3,
+    parser.add_argument('--lr', type=float, default=5e-4,
                         help='learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-10,
                         help='weight decay')
@@ -44,17 +44,17 @@ if __name__ == "__main__":
                         help='logging flag')
     parser.add_argument('--model_name', type=str, default='Ponita',
                         help='logging flag')
-    parser.add_argument('--wandb_log_folder', type=str, default='NGT200Main_1_2_3',
+    parser.add_argument('--wandb_log_folder', type=str, default='H2S_Ponita',
                         help='logging flag')
     parser.add_argument('--enable_progress_bar', type=eval, default=True,
                         help='enable progress bar')
-    parser.add_argument('--num_workers', type=int, default=6,
+    parser.add_argument('--num_workers', type=int, default=10,
                         help='Num workers in dataloader')
     parser.add_argument('--seed', type=int, default=0,
                         help='Random seed')
 
     # Settings for saving the model
-    parser.add_argument('--save_folder', type=str, default='logs/T2',
+    parser.add_argument('--save_folder', type=str, default='./logs/',
                         help='logging flag')
     
     # Train settings
@@ -68,15 +68,15 @@ if __name__ == "__main__":
                         help='enable self interactions')
 
     # PONTA model settings
-    parser.add_argument('--num_ori', type=int, default=10,
+    parser.add_argument('--num_ori', type=int, default=1,
                         help='num elements of spherical grid')
-    parser.add_argument('--hidden_dim', type=int, default=128,
+    parser.add_argument('--hidden_dim', type=int, default=64,
                         help='internal feature dimension')
-    parser.add_argument('--basis_dim', type=int, default=256,
+    parser.add_argument('--basis_dim', type=int, default=128,
                         help='number of basis functions')
     parser.add_argument('--degree', type=int, default=1,
                         help='degree of the polynomial embedding')
-    parser.add_argument('--layers', type=int, default=5,
+    parser.add_argument('--layers', type=int, default=6,
                         help='Number of message passing layers')
     parser.add_argument('--widening_factor', type=int, default=4,
                         help='Number of message passing layers')
@@ -93,21 +93,20 @@ if __name__ == "__main__":
     # ISR Dataset settings
     parser.add_argument('--root', type=str, default="datasets/isr",
                         help='Data set location')
-    parser.add_argument('--root_metadata', type=str, default="NGT/metadata_ponita_1_1.json",
+    parser.add_argument('--root_metadata', type=str, default="/home/or0007/gitlab/Ponita_SLR/datasets/isr/h2s/h2s_pseudo_gloss_base_with_pos_sent_",
                         help='Metadata json file location')
-    parser.add_argument('--root_poses', type=str, default="NGT/Poses",
+    parser.add_argument('--root_poses', type=str, default="/home/or0007/gitlab/beyondbleu/out/features/H2S/h2s_", #train_features.pkl",
                         help='Pose data dir location')
-    parser.add_argument('--n_classes', type=str, default=198,
+    parser.add_argument('--n_classes', type=str, default=2,
                         help='Number of sign classes')
     parser.add_argument('--temporal_configuration', type=str, default="spatio_temporal",
                         help='Temporal configuration of the graph. Options: spatio_temporal, per_frame') 
-    parser.add_argument('--n_nodes', type=int, default=27,
+    parser.add_argument('--n_nodes', type=int, default=133,
                         help='Number of nodes to use when reducing the graph - only 27 currently implemented')
     parser.add_argument('--scale_norm', type=eval, default=True,
                         help='If to apply scale and normalization') 
     parser.add_argument('--downsample', type=eval, default=False,
                         help='If to apply scale and normalization')
-        
     # Parallel computing stuff
     parser.add_argument('-g', '--gpus', default=1, type=int,
                         help='number of gpus to use (assumes all are on one node)')
@@ -133,11 +132,12 @@ if __name__ == "__main__":
 
     # Dataloader
     pyg_loader = ISRDataLoader(data, args)
+    print("Dataset loaded")
     
     
     # ------------------------ Load and initialize the model
     model = PONITA_ISR(args)
-    
+    print("Model initialized")
 
     # ------------------------ Weights and Biases logger
     if args.log:
@@ -172,4 +172,4 @@ if __name__ == "__main__":
     trainer.fit(model, pyg_loader.train_loader, pyg_loader.val_loader)
     
     # And test
-    trainer.test(model, pyg_loader.test_loader, ckpt_path = "best")
+    #trainer.test(model, pyg_loader.test_loader, ckpt_path = "best")

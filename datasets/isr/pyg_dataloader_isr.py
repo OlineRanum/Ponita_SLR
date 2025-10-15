@@ -6,6 +6,7 @@ import torch
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from .pose_transforms_new import CenterAndScaleNormalize
+from typing import Dict, List, Tuple
 
 class ISRDataReader:
     def __init__(self, data_dir, args):
@@ -32,38 +33,78 @@ class ISRDataReader:
         # Build spatio-temporal graph 
         print('Building graphs...')
         self.data_dict = self._build_spatio_temporal_graph(data_dict)
-        
-    
-        
 
     def _load_metadata(self, file_path):
         """ Load the metadata from the json file
         """
-        with open(file_path, 'r') as file:
-            metadata = json.load(file)
+        import pickle 
+        with open(file_path + 'train.h2s_pkl', 'rb') as file:
+            metadata_train = pickle.load(file)
+        with open(file_path + 'dev.h2s_pkl', 'rb') as file:
+            metadata_val = pickle.load(file)
+        with open(file_path + 'test.h2s_pkl', 'rb') as file:
+            metadata_test = pickle.load(file)
             
         self.gloss_dict = {}
-        for item in metadata:  
-            self.gloss_dict.setdefault(item['gloss'], []).extend(
-                [(instance['video_id'], instance['split'], instance['camera_view']) for instance in item['instances']])
+        # TODO: Fix this - currently not loading correctly 
+        pos_val = 0
+        neg_val = 0
+        pos_test = 0
+        neg_test = 0
+        pos_train = 0
+        neg_train = 0
+        for key, value in metadata_train.items():  
+            if value['sentiment'] != 'neutral':
+                self.gloss_dict.setdefault(value['sentiment'], []).extend(
+                    [(key, 'train')])
+                if value['sentiment'] == 'positive':
+                    pos_train += 1
+                elif value['sentiment'] == 'negative':
+                    neg_train += 1
 
+        for key, value in metadata_val.items():  
+            if value['sentiment'] != 'neutral':
+                self.gloss_dict.setdefault(value['sentiment'], []).extend(
+                    [(key, 'val')])
+                if value['sentiment'] == 'positive':
+                    pos_val += 1
+                elif value['sentiment'] == 'negative':
+                    neg_val += 1
+
+        for key, value in metadata_test.items():  
+            if value['sentiment'] != 'neutral':
+                self.gloss_dict.setdefault(value['sentiment'], []).extend(
+                    [(key, 'test')])
+                if value['sentiment'] == 'positive':
+                    pos_test += 1
+                elif value['sentiment'] == 'negative':
+                    neg_test += 1
+        print(f"Number of positive samples: train {pos_train}, val {pos_val}, test {pos_test}")
+        print(f"Number of negative samples: train {neg_train}, val {neg_val}, test {neg_test}")
 
     def _load_pose_data(self, pickle_path):
         """ Load the pickle files and create a dictionary with the data
         """
         labels = {word: index for index, word in enumerate(self.gloss_dict.keys())}
 
+        with open('/home/or0007/gitlab/beyondbleu/out/features/H2S/h2s_train_features.pkl', 'rb') as file:
+            feat_train = pickle.load(file)
+        with open('/home/or0007/gitlab/beyondbleu/out/features/H2S/h2s_test_features.pkl', 'rb') as file:
+            feat_val = pickle.load(file)
+            feat_test = feat_val
+        
+        features = {**feat_train, **feat_val}
+        
         data_dict = {
             vid_id: {
-                'label': labels[gloss],
-                'gloss': gloss,
-                'node_pos': self._transform_data(pickle.load(open(os.path.join(pickle_path, f'{vid_id}.pkl'), 'rb'))["keypoints"][:, :, :2]),
-                'split': split,
-                'view': view,
+                'label': labels[key],
+                'gloss': key,
+                'node_pos': self._transform_data(features[vid_id]),
+                'split': split
             }
-            for gloss, metadata in self.gloss_dict.items()
-            for vid_id, split, view in metadata
-            if os.path.exists(os.path.join(pickle_path, f'{vid_id}.pkl'))
+            for key, metadata in self.gloss_dict.items()
+            for vid_id, split in metadata
+            if key != 'neutral' and vid_id in features
         }
 
         return data_dict
@@ -76,14 +117,17 @@ class ISRDataReader:
     def _transform_data(self, kps):
         """ Apply selected transformations to the data
         """
+        frames = self.pose_select(kps)
+
         # frames: [2 (x and y), n_frames, 75 nodes]
         frames = torch.tensor(np.asarray(kps, dtype=np.float32)).permute(2, 0, 1)
-        
+        frames = frames[0:2, :, :]  # Only keep x and y coordinates
+       
+
         
         # Subsample nodes
         # frames: [2 (x and y), n_frames, 25 nodes]
-        frames = self.pose_select(frames)
-
+        
         # Downsample number of frames
         if self.downsample:
             frames = self.downsample_frames(frames)
@@ -91,24 +135,49 @@ class ISRDataReader:
         # Normalize poses
         # TODO Finish testing Scale and Normalization
 
-        if self.set_scalenorm:
-            self.scalenorm = CenterAndScaleNormalize()
-            frames = self.scalenorm(frames)
+        #if self.set_scalenorm:
+        #    self.scalenorm = CenterAndScaleNormalize()
+        #     frames = self.scalenorm(frames)
             
-
-        
         return frames
     
     
     def downsample_frames(self, frames, downsample_rate = 3):
         return frames[:, ::downsample_rate, :]
+    
+    def reduce_keypoints(self, frame, points_not_use: List[int]) -> Tuple[np.ndarray, List[int], Dict[int, int], Dict[int, int]]:
+        """
+        Remove specified keypoints from a single frame and return:
+        - reduced_frame: (n_kept, 2) with only kept keypoints
+        - keep_indices: list mapping new_idx -> old_idx
+        - old_to_new: dict mapping old_idx -> new_idx
+        - new_to_old: dict mapping new_idx -> old_idx
+        """
+        n_nodes = frame.shape[0]
+        points_not_use = sorted(set(i for i in points_not_use if 0 <= i < n_nodes))
+        all_indices = set(range(n_nodes))
+        keep_indices = sorted(all_indices - set(points_not_use))
+
+        reduced_frame = frame[keep_indices, :]
+        self.old_to_new = {old: new for new, old in enumerate(keep_indices)}
+        self.new_to_old = {new: old for old, new in self.old_to_new.items()}
+
+        return reduced_frame, keep_indices, self.old_to_new, self.new_to_old
 
     def pose_select(self, frames):
         """ Downsample pose graph based on the standard node selection from holistic 27 minimal node set
         """
         # Indexes for reduction of graph nodes of graph size 27 nodes, predefined in holistic mediapipe package 
-        pose_indexes = [0, 2, 5, 11, 12, 13, 14, 33, 37, 38, 41, 42, 45, 46, 49, 50, 53, 54, 58, 59, 62, 63, 66, 67, 70, 71, 74]
-        return frames[:, :, pose_indexes]
+        points_not_use = [0, 1, 2, 3, 4, 9, 10, 13, 14, 15, 17, 16, 22, 21, 18, 19, 20]
+        points_not_use = sorted(set(points_not_use))
+        reduced_frames = []
+        for frame in frames:
+            reduced_frame, self.keep_indices, old_to_new, new_to_old = self.reduce_keypoints(frame, points_not_use)
+            reduced_frames.append(reduced_frame)
+        
+        # Stack the numpy arrays first, then convert to tensor
+        reduced_frames = np.stack(reduced_frames)
+        return torch.tensor(reduced_frames, dtype=torch.float32)
 
     #--------------------------------------
     # C. Graph construction functionalities
@@ -125,7 +194,7 @@ class ISRDataReader:
         :return: A dictionary containing the spatio-temporal graph data.
         """
         
-        graph_constructor = SpatioTemporalGraphBuilder(data_dict, self.args)
+        graph_constructor = SpatioTemporalGraphBuilder(data_dict, self.args, old_to_new=self.old_to_new)
 
         graph_dict = {}
         max_frames_count = 0
@@ -153,20 +222,19 @@ class ISRDataReader:
             # Get landmarks as features
             x = graph_constructor.landmark_features[:,:end_idx].T
 
+
             # Get positions
             pos = graph_constructor.reshape_nodes(data['node_pos'])
             
             #x, pos = self.add_padding(x, pos)
-
             graph_dict[vid_id] = {
                 'label': data['label'],
                 'gloss': data['gloss'],
                 'x': x,  
-                'n_frames': data['node_pos'].shape[1], 
+                'n_frames': data['node_pos'].shape[1], # pos [feat, T, N_nodes]
                 'node_pos': pos,  
                 'edges': spatial_edges,   
                 'split': data['split'],
-                'view': data['view'],
             }
 
         return graph_dict
@@ -183,12 +251,13 @@ class ISRDataReader:
         return x, pos_data
     
 class SpatioTemporalGraphBuilder:
-    def __init__(self, data_dict, args, inward_edges = None):
+    def __init__(self, data_dict, args, inward_edges = None, old_to_new = None):
         """
         Initialize the graph builder with a fixed number of nodes and a list of inward edges.
         :param num_nodes: Number of nodes in each frame.
         :param inward_edges: List of edges in the format [source, destination].
         """
+        self.old_to_new = old_to_new    
         # Find max number of frames in dataset
         self.max_n_frames     = max(item['node_pos'].shape[1] for item in data_dict.values())
         self.args             = args
@@ -198,14 +267,49 @@ class SpatioTemporalGraphBuilder:
 
         if inward_edges is None:
             ## Default holistic mediapipe edges
-            self.inward_edges = [ [2, 0], [1, 0], [0, 3], [0, 4], [3, 5], [4, 6], [5, 7], [6, 17], 
-                                [7, 8], [7, 9], [9, 10], [7, 11], [11, 12], [7, 13], [13, 14], 
-                                [7, 15], [15, 16], [17, 18], [17, 19], [19, 20], [17, 21], [21, 22], 
-                                [17, 23], [23, 24], [17, 25], [25, 26]]
+            self.inward_edges =[
+                            [5, 6], [5, 7], [5, 11],
+                            [6, 8], [6, 12],
+                            [7, 91],
+                            [8, 112],
+                            [11, 12],
+                            [13, 15],
+                            [15, 17], [15, 18], [15, 19],
+                            [91, 92], [91, 96], [91, 100], [91, 104], [91, 108],
+                            [92, 93], [93, 94], [94, 95],
+                            [96, 97], [97, 98], [98, 99],
+                            [100, 101], [101, 102], [102, 103],
+                            [104, 105], [105, 106], [106, 107],
+                            [108, 109], [109, 110], [110, 111],
+                            [112, 113], [112, 117], [112, 121], [112, 125], [112, 129],
+                            [113, 114], [114, 115], [115, 116],
+                            [117, 118], [118, 119], [119, 120],
+                            [121, 122], [122, 123], [123, 124],
+                            [125, 126], [126, 127], [127, 128],
+                            [129, 130], [130, 131], [131, 132],
+                            # Face
+                            [50,51], [51,52], [52,53], [53,54], [54,55], [55,56], [56,57], [57,58],  # Nose
+                            [59,60], [60,61], [61,62], [62,63], [63,64], [64,59], [59, 23],          # Right eye + jaw link
+                            [23, 24], [24, 25], [25, 26], [26, 27], [27, 28],                         # Jaw
+                            [28, 29], [29, 30], [30, 31], [31, 32], [32, 33],                         # Jaw
+                            [33, 34], [34, 35], [35, 36], [36, 37], [37, 38], [38, 39],               # Jaw
+                            [40, 41], [41, 42], [42, 43], [43, 44],                                   # Right brow
+                            [45, 46], [46, 47], [47, 48], [48, 49],                                   # Left brow
+                            [65,66], [66,67], [67,68], [68,69], [69,70], [70,65],                     # Left eye
+                            [71,72], [72,73], [73,74], [74,75], [75,76], [76,77], [77,78], [78,79],
+                            [79,80], [80,81], [81,82], [82,71],                                       # Outer mouth
+                            [83,84], [84,85], [85,86], [86,87], [87,88], [88,89], [89,90], [90,83],   # Inner mouth
+                            [49, 68], [40, 59], [50, 65], [50, 62], [39, 68], [39, 78], [23, 72],
+                            [54, 75], [75, 86], [80, 31],                                             # Other face connections
+                            # Global connections to face (from shoulders)
+                            [6, 31], [5, 31]
+                        ]
+            self.inward_edges = self.reduce_edges(self.inward_edges, sort_and_dedupe=True)
+
             
         else:
             self.inward_edges = inward_edges
-
+            
         self.n_spatial_edges = len(self.inward_edges)
         self.n_temporal_edges = self.N_NODES
 
@@ -213,6 +317,28 @@ class SpatioTemporalGraphBuilder:
         self._build_spatiotemporal_edges()
         # Build node features    
         self._build_node_features()
+
+    def reduce_edges(self, edges_original: List[List[int]],
+                    sort_and_dedupe: bool = True) -> List[List[int]]:
+        """
+        Remap edges from original indices to reduced indices using old_to_new.
+        Drops any edge that references a removed node.
+        Optionally sorts each pair low→high and dedupes + lexicographically sorts the list.
+        """
+        remapped: List[List[int]] = []
+        for i, j in edges_original:
+            if i in self.old_to_new and j in self.old_to_new:
+                a, b = self.old_to_new[i], self.old_to_new[j]
+                if a != b:  # avoid self-loops
+                    if sort_and_dedupe and a > b:
+                        a, b = b, a
+                    remapped.append([a, b])
+
+        if sort_and_dedupe:
+            remapped = sorted(set(tuple(e) for e in remapped))
+            remapped = [list(e) for e in remapped]
+
+        return remapped
             
     def _build_node_features(self):
         """
@@ -281,18 +407,13 @@ class ISRDataLoader:
         self.train_loader  = self._load_data(train_data)
         self.val_loader = self._load_data(val_data, shuffle = False, split = 'val')
         self.test_loader = [
-            self._load_data(test_data[0], shuffle = False, split='test'),
-            self._load_data(test_data[0], shuffle = False, split='test'),
-            self._load_data(test_data[0], shuffle = False, split='test'),
+            self._load_data(test_data[0], shuffle = False, split='test')
         ]
 
     def _split_dataset(self, data_dict):
         train_data = {k: v for k, v in data_dict.items() if v['split'] == 'train'}
-        val_data = {k: v for k, v in data_dict.items() if v['split'] == 'val'}
-        test_data_v0 = {k: v for k, v in data_dict.items() if v['split'] == 'test' and v['view'] == 0}
-        test_data_v1 = {k: v for k, v in data_dict.items() if v['split'] == 'test' and v['view'] == 1}
-        test_data_v2 = {k: v for k, v in data_dict.items() if v['split'] == 'test' and v['view'] == 2}
-        test_data = [test_data_v0, test_data_v1, test_data_v2]
+        val_data = {k: v for k, v in data_dict.items() if v['split'] == 'test'}
+        test_data = [{k: v for k, v in data_dict.items() if v['split'] == 'test' }]
         return train_data, val_data, test_data
 
     def _load_data(self, data_dict, shuffle = True, split = 'train'): 
@@ -304,7 +425,7 @@ class ISRDataLoader:
             if self.args.temporal_configuration == 'spatio_temporal':
                 self.edge_index = data['edges']
             
-            data_list.append(Data(pos = pos, x = x, edge_index= self.edge_index, y=y, n_frames = data['n_frames'], view = data['view']))
+            data_list.append(Data(pos = pos, x = x, edge_index= self.edge_index, y=y, n_frames = data['n_frames'], view = 1))
            
         
         print('Number of ' + split + ' points:', len(data_list))

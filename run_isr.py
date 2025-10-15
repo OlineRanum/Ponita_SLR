@@ -162,11 +162,11 @@ if __name__ == "__main__":
     # ISR Dataset settings
     parser.add_argument('--root', type=str, default="datasets/isr",
                         help='Data set location')
-    parser.add_argument('--root_metadata', type=str, default="NGT/kfold_handshapes/1_2_3/T1/metadata_fold_1.json",
+    parser.add_argument('--root_metadata', type=str, default="/home/or0007/gitlab/Ponita_SLR/datasets/isr/h2s/h2s_pseudo_gloss_base_with_pos_sent_",
                         help='Metadata json file location')
-    parser.add_argument('--root_poses', type=str, default="NGT/Poses",
+    parser.add_argument('--root_poses', type=str, default="/home/or0007/gitlab/beyondbleu/out/features/H2S/h2s_", #train_features.pkl",
                         help='Pose data dir location')
-    parser.add_argument('--n_classes', type=str, default=198,
+    parser.add_argument('--n_classes', type=str, default=2,
                         help='Number of sign classes')
     parser.add_argument('--temporal_configuration', type=str, default="spatio_temporal",
                         help='Temporal configuration of the graph. Options: spatio_temporal, per_frame') 

@@ -34,6 +34,16 @@ class PONITA_ISR(pl.LightningModule):
         # The metrics to log
         self.train_metric = torchmetrics.Accuracy(task='multiclass', num_classes=int(args.n_classes))
         self.valid_metric = torchmetrics.Accuracy(task='multiclass', num_classes=int(args.n_classes))
+        
+        # NEW: per-class (no reduction) accuracy metrics
+        self.train_metric_per_class = torchmetrics.Accuracy(
+            task='multiclass', num_classes=int(args.n_classes), average=None
+        )
+        self.valid_metric_per_class = torchmetrics.Accuracy(
+            task='multiclass', num_classes=int(args.n_classes), average=None
+        )
+
+
         self.test_metric0 = torchmetrics.Accuracy(task='multiclass', num_classes=int(args.n_classes))
         self.test_metric1 = torchmetrics.Accuracy(task='multiclass', num_classes=int(args.n_classes))
         self.test_metric2 = torchmetrics.Accuracy(task='multiclass', num_classes=int(args.n_classes))
@@ -73,22 +83,38 @@ class PONITA_ISR(pl.LightningModule):
     def training_step(self, graph):
         if self.train_augm:
             graph = self.rotation_transform(graph)
-            # graph = self.shear_transform(graph)
         pred = self(graph)
         pred = torch.nn.functional.log_softmax(pred, dim=-1)
         loss = torch.nn.functional.nll_loss(pred, graph.y)
-        self.train_metric(pred, graph.y)
-        return loss
 
+        # update metrics
+        self.train_metric(pred, graph.y)
+        self.train_metric_per_class(pred, graph.y)  # NEW
+
+        return loss
+    
     def on_train_epoch_end(self):
         self.log("train_acc", self.train_metric, prog_bar=True)
+        # NEW: per-class accuracies -> two separate WandB scalars
+        pc = self.train_metric_per_class.compute()  # tensor([acc_class0, acc_class1])
+        # If you prefer semantic names, rename below accordingly.
+        self.log("train_acc_class_neg", pc[0], prog_bar=False)
+        self.log("train_acc_class_pos", pc[1], prog_bar=False)
+        self.train_metric_per_class.reset()
 
     def validation_step(self, graph, batch_idx):
         pred = self(graph)
         self.valid_metric(pred, graph.y)
+        self.valid_metric_per_class(pred, graph.y)  # NEW
 
     def on_validation_epoch_end(self):
         self.log("val_acc", self.valid_metric, prog_bar=True)
+
+        # NEW: per-class validation accuracies
+        pc = self.valid_metric_per_class.compute()
+        self.log("val_acc_class_neg", pc[0], prog_bar=False)
+        self.log("val_acc_class_pos", pc[1], prog_bar=False)
+        self.valid_metric_per_class.reset()
 
         epoch_val_metric = self.valid_metric.compute()
         if self.top_val_metric < epoch_val_metric:
@@ -103,7 +129,7 @@ class PONITA_ISR(pl.LightningModule):
         elif dataloader_idx == 2:
             self.test_metric1(pred, graph.y)
         else:
-            print("Fuckk")
+            pass
 
     def on_test_epoch_end(self, ):
         self.log(f"test_acc_0", self.test_metric0, prog_bar=True)
