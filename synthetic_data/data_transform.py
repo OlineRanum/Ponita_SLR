@@ -61,4 +61,81 @@ class TransformPose():
         print(f"Shifted {len(self.right_hand)} right hand nodes by offset")
         print(f"Shifted {len(self.left_hand)} left hand nodes by offset")
         
-        return new_base_pose
+        return new_base_pose[np.newaxis, :, :]
+    
+    def generate_synthetic_motion(self, pose, axis=0, T=100, delta_percent=0.05, output_original_size=False):
+        """
+        Generate synthetic data with random motion along specified axis.
+        
+        Args:
+            pose: Input pose shape (1, N, 2) where N is number of nodes
+            axis: 0 for x-axis motion, 1 for y-axis motion
+            T: Number of time steps to generate
+            delta_percent: Step size as percentage of shoulder width (default 5%)
+            output_original_size: If True, output shape (T, 133, 2), else (T, N, 2)
+            
+        Returns:
+            numpy.ndarray: Synthetic motion data with shape (T, N, 2) or (T, 133, 2)
+        """
+        # Get input dimensions
+        _, N, _ = pose.shape
+        
+        # Calculate delta based on shoulder width
+        left_shoulder_pos = pose[0, self.left_shoulder]
+        right_shoulder_pos = pose[0, self.right_shoulder]
+        shoulder_width = abs(right_shoulder_pos[0] - left_shoulder_pos[0])
+        delta = delta_percent * shoulder_width
+        
+        print(f"Shoulder width: {shoulder_width:.4f}")
+        print(f"Delta step size: {delta:.4f} ({delta_percent*100}% of shoulder width)")
+        
+        # Determine output size
+        output_N = 133 if output_original_size else N
+        
+        # Initialize output array
+        synthetic_data = np.zeros((T, output_N, 2))
+        
+        if output_original_size:
+            # Need to expand back to original 133 nodes
+            # This would require reverse mapping from reduced to original indices
+            # For now, just place the reduced pose in the first N positions
+            for t in range(T):
+                synthetic_data[t, :N] = pose[0]
+        else:
+            # Set initial pose for all time steps
+            for t in range(T):
+                synthetic_data[t] = pose[0]
+        
+        # Generate random motion for hand nodes
+        all_hand_nodes = np.concatenate([self.left_hand, [self.left_wrist], 
+                                       self.right_hand, [self.right_wrist]])
+        
+        for t in range(1, T):
+            # Copy previous frame
+            synthetic_data[t] = synthetic_data[t-1].copy()
+            
+            # Generate one random step for each hand (left and right move together as units)
+            left_hand_nodes = np.concatenate([self.left_hand, [self.left_wrist]])
+            right_hand_nodes = np.concatenate([self.right_hand, [self.right_wrist]])
+            
+            # Random step for left hand: -1, 0, or +1
+            left_random_step = np.random.choice([-1, 0, 1])
+            left_motion = left_random_step * delta
+            
+            # Random step for right hand: -1, 0, or +1  
+            right_random_step = np.random.choice([-1, 0, 1])
+            right_motion = right_random_step * delta
+            
+            # Apply same motion to all nodes in each hand
+            for node_idx in left_hand_nodes:
+                if node_idx < output_N:  # Make sure index is valid
+                    synthetic_data[t, node_idx, axis] += left_motion
+                    
+            for node_idx in right_hand_nodes:
+                if node_idx < output_N:  # Make sure index is valid
+                    synthetic_data[t, node_idx, axis] += right_motion
+        
+        print(f"Generated synthetic motion: shape {synthetic_data.shape}")
+        print(f"Motion along axis {axis} ({'x' if axis == 0 else 'y'})")
+        
+        return synthetic_data 
