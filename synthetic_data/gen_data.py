@@ -67,7 +67,7 @@ def main():
         
         print("\nPose analysis and animation generation complete!")
 
-    
+    base_pose = input_pose 
 
 if __name__ == "__main__":
     main()
