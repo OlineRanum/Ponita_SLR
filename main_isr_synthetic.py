@@ -6,8 +6,8 @@ from lightning_wrappers.callbacks import EMA, EpochTimer
 from lightning_wrappers.isr import PONITA_ISR
 from torch_geometric.transforms import BaseTransform
 
-from datasets.isr.pyg_dataloader_isr import ISRDataReader
-from datasets.isr.pyg_dataloader_isr import ISRDataLoader
+from datasets.isr.pyg_dataloader_isr_synthetic import ISRDataReader
+from datasets.isr.pyg_dataloader_isr_synthetic import ISRDataLoader
 
 
 # TODO: do we need this?
@@ -42,9 +42,9 @@ if __name__ == "__main__":
                         help='dropout rate on parameters in 1D temporal conv')
     parser.add_argument('--log', type=eval, default=True,
                         help='logging flag')
-    parser.add_argument('--model_name', type=str, default='Ponita',
+    parser.add_argument('--model_name', type=str, default='Ponit_horizontal_vertical_position',
                         help='logging flag')
-    parser.add_argument('--wandb_log_folder', type=str, default='H2S_Ponita',
+    parser.add_argument('--wandb_log_folder', type=str, default='Synthetic_Encoder_evaluations',
                         help='logging flag')
     parser.add_argument('--enable_progress_bar', type=eval, default=True,
                         help='enable progress bar')
@@ -52,6 +52,9 @@ if __name__ == "__main__":
                         help='Num workers in dataloader')
     parser.add_argument('--seed', type=int, default=0,
                         help='Random seed')
+    
+    parser.add_argument('--use_scheduler', type=eval, default=False,
+                        help='If to use learning rate scheduler')
 
     # Settings for saving the model
     parser.add_argument('--save_folder', type=str, default='./logs/',
@@ -70,22 +73,22 @@ if __name__ == "__main__":
     # PONTA model settings
     parser.add_argument('--num_ori', type=int, default=1,
                         help='num elements of spherical grid')
-    parser.add_argument('--hidden_dim', type=int, default=64,
+    parser.add_argument('--hidden_dim', type=int, default=32,
                         help='internal feature dimension')
-    parser.add_argument('--basis_dim', type=int, default=128,
+    parser.add_argument('--basis_dim', type=int, default=32,
                         help='number of basis functions')
     parser.add_argument('--degree', type=int, default=1,
                         help='degree of the polynomial embedding')
-    parser.add_argument('--layers', type=int, default=6,
+    parser.add_argument('--layers', type=int, default=3,
                         help='Number of message passing layers')
-    parser.add_argument('--widening_factor', type=int, default=4,
+    parser.add_argument('--widening_factor', type=int, default=8,
                         help='Number of message passing layers')
     parser.add_argument('--layer_scale', type=float, default=0,
                         help='Initial layer scale factor in ConvNextBlock, 0 means do not use layer scale')
     parser.add_argument('--multiple_readouts', type=eval, default=False,
                         help='Whether or not to readout after every layer')
     # TIME PONITA model spesific settings
-    parser.add_argument('--kernel_size', type=int, default=9,
+    parser.add_argument('--kernel_size', type=int, default=15,
                         help='size of 1D conv kernel')    
     parser.add_argument('--stride', type=int, default=1,
                         help='size of 1D conv stride')    
@@ -93,17 +96,17 @@ if __name__ == "__main__":
     # ISR Dataset settings
     parser.add_argument('--root', type=str, default="datasets/isr",
                         help='Data set location')
-    parser.add_argument('--root_metadata', type=str, default="/home/or0007/gitlab/Ponita_SLR/datasets/isr/h2s/h2s_pseudo_gloss_base_with_pos_sent_",
-                        help='Metadata json file location')
-    parser.add_argument('--root_poses', type=str, default="/home/or0007/gitlab/beyondbleu/out/features/H2S/h2s_", #train_features.pkl",
-                        help='Pose data dir location')
-    parser.add_argument('--n_classes', type=str, default=2,
+    parser.add_argument('--root_metadata', type=str, default="synthetic/",
+                        help='Metadata json file location (not used for synthetic)')
+    parser.add_argument('--root_poses', type=str, default="synthetic/",
+                        help='Pose data dir location (not used for synthetic)')
+    parser.add_argument('--n_classes', type=int, default=2,
                         help='Number of sign classes')
     parser.add_argument('--temporal_configuration', type=str, default="spatio_temporal",
                         help='Temporal configuration of the graph. Options: spatio_temporal, per_frame') 
-    parser.add_argument('--n_nodes', type=int, default=47,
+    parser.add_argument('--n_nodes', type=int, default=116,
                         help='Number of nodes to use when reducing the graph - only 27 currently implemented')
-    parser.add_argument('--scale_norm', type=eval, default=False,
+    parser.add_argument('--scale_norm', type=eval, default=True,
                         help='If to apply scale and normalization') 
     parser.add_argument('--downsample', type=eval, default=False,
                         help='If to apply scale and normalization')

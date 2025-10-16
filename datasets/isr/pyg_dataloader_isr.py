@@ -106,6 +106,7 @@ class ISRDataReader:
             for vid_id, split in metadata
             if key != 'neutral' and vid_id in features
         }
+        
 
         return data_dict
 
@@ -120,7 +121,8 @@ class ISRDataReader:
         frames = self.pose_select(kps)
 
         # frames: [2 (x and y), n_frames, 75 nodes]
-        frames = torch.tensor(np.asarray(kps, dtype=np.float32)).permute(2, 0, 1)
+        frames = torch.tensor(np.asarray(frames, dtype=np.float32)).permute(2, 0, 1)
+
         frames = frames[0:2, :, :]  # Only keep x and y coordinates
        
 
@@ -129,8 +131,8 @@ class ISRDataReader:
         # frames: [2 (x and y), n_frames, 25 nodes]
         
         # Downsample number of frames
-        if self.downsample:
-            frames = self.downsample_frames(frames)
+        #if self.downsample:
+        #    frames = self.downsample_frames(frames)
 
         # Normalize poses
         # TODO Finish testing Scale and Normalization
@@ -138,7 +140,7 @@ class ISRDataReader:
         #if self.set_scalenorm:
         #    self.scalenorm = CenterAndScaleNormalize()
         #     frames = self.scalenorm(frames)
-            
+
         return frames
     
     
@@ -153,6 +155,7 @@ class ISRDataReader:
         - old_to_new: dict mapping old_idx -> new_idx
         - new_to_old: dict mapping new_idx -> old_idx
         """
+
         n_nodes = frame.shape[0]
         points_not_use = sorted(set(i for i in points_not_use if 0 <= i < n_nodes))
         all_indices = set(range(n_nodes))
@@ -169,7 +172,14 @@ class ISRDataReader:
         """
         # Indexes for reduction of graph nodes of graph size 27 nodes, predefined in holistic mediapipe package 
         points_not_use = [0, 1, 2, 3, 4, 9, 10, 13, 14, 15, 17, 16, 22, 21, 18, 19, 20]
-        points_not_use = sorted(set(points_not_use))
+        if self.N_NODES == 116:
+            points_to_use = np.arange(0,117)
+        elif self.N_NODES == 47:
+            points_to_use = np.concatenate([np.arange(95, 116), np.arange(74, 95), np.arange(0,5)])
+        # Calculate points_not_use as all points from 0-116 that are not in points_to_use
+        all_points = set(range(116))
+        points_not_use = sorted(list(list(all_points - set(points_to_use)) + points_not_use))
+
         reduced_frames = []
         for frame in frames:
             reduced_frame, self.keep_indices, old_to_new, new_to_old = self.reduce_keypoints(frame, points_not_use)
@@ -217,6 +227,7 @@ class ISRDataReader:
                 spatial_edges = spatial_edges.t().contiguous()
                 temporal_edges = graph_constructor.temporal_edges[:int((self.max_frames-1)*graph_constructor.n_temporal_edges),:]
                 temporal_edges = temporal_edges.t().contiguous()
+                
 
 
             # Get landmarks as features
@@ -225,7 +236,7 @@ class ISRDataReader:
 
             # Get positions
             pos = graph_constructor.reshape_nodes(data['node_pos'])
-            
+
             #x, pos = self.add_padding(x, pos)
             graph_dict[vid_id] = {
                 'label': data['label'],

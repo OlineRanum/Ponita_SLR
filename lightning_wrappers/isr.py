@@ -23,6 +23,7 @@ class PONITA_ISR(pl.LightningModule):
         self.temporal_weight_decay = args.temporal_weight_decay
         self.epochs = args.epochs
         self.warmup = args.warmup
+        self.args = args
         if args.layer_scale == 0.:
             args.layer_scale = None
 
@@ -90,6 +91,9 @@ class PONITA_ISR(pl.LightningModule):
         # update metrics
         self.train_metric(pred, graph.y)
         self.train_metric_per_class(pred, graph.y)  # NEW
+        
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.batch_size)
+
 
         return loss
     
@@ -102,10 +106,14 @@ class PONITA_ISR(pl.LightningModule):
         self.log("train_acc_class_pos", pc[1], prog_bar=False)
         self.train_metric_per_class.reset()
 
+
     def validation_step(self, graph, batch_idx):
         pred = self(graph)
+        loss = torch.nn.functional.cross_entropy(pred, graph.y)
         self.valid_metric(pred, graph.y)
         self.valid_metric_per_class(pred, graph.y)  # NEW
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True, batch_size=self.args.batch_size)
+        return loss 
 
     def on_validation_epoch_end(self):
         self.log("val_acc", self.valid_metric, prog_bar=True)
