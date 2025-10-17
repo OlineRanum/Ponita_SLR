@@ -119,7 +119,7 @@ class ISRDataReader:
         """ Apply selected transformations to the data
         """
         frames = self.pose_select(kps)
-
+        
         # frames: [2 (x and y), n_frames, 75 nodes]
         frames = torch.tensor(np.asarray(frames, dtype=np.float32)).permute(2, 0, 1)
 
@@ -131,8 +131,8 @@ class ISRDataReader:
         # frames: [2 (x and y), n_frames, 25 nodes]
         
         # Downsample number of frames
-        #if self.downsample:
-        #    frames = self.downsample_frames(frames)
+        if self.downsample:
+            frames = self.downsample_frames(frames)
 
         # Normalize poses
         # TODO Finish testing Scale and Normalization
@@ -147,46 +147,46 @@ class ISRDataReader:
     def downsample_frames(self, frames, downsample_rate = 3):
         return frames[:, ::downsample_rate, :]
     
-    def reduce_keypoints(self, frame, points_not_use: List[int]) -> Tuple[np.ndarray, List[int], Dict[int, int], Dict[int, int]]:
+    def reduce_keypoints(self, frame, points_to_use: List[int]) -> Tuple[np.ndarray, List[int], Dict[int, int], Dict[int, int]]:
         """
-        Remove specified keypoints from a single frame and return:
+        Keep only specified keypoints from a single frame and return:
         - reduced_frame: (n_kept, 2) with only kept keypoints
         - keep_indices: list mapping new_idx -> old_idx
         - old_to_new: dict mapping old_idx -> new_idx
         - new_to_old: dict mapping new_idx -> old_idx
         """
-
         n_nodes = frame.shape[0]
-        points_not_use = sorted(set(i for i in points_not_use if 0 <= i < n_nodes))
-        all_indices = set(range(n_nodes))
-        keep_indices = sorted(all_indices - set(points_not_use))
+        # Filter points_to_use to only include valid indices
+        keep_indices = sorted(set(i for i in points_to_use if 0 <= i < n_nodes))
 
+        
         reduced_frame = frame[keep_indices, :]
         self.old_to_new = {old: new for new, old in enumerate(keep_indices)}
         self.new_to_old = {new: old for old, new in self.old_to_new.items()}
-
+        
         return reduced_frame, keep_indices, self.old_to_new, self.new_to_old
 
     def pose_select(self, frames):
         """ Downsample pose graph based on the standard node selection from holistic 27 minimal node set
         """
-        # Indexes for reduction of graph nodes of graph size 27 nodes, predefined in holistic mediapipe package 
-        points_not_use = [0, 1, 2, 3, 4, 9, 10, 13, 14, 15, 17, 16, 22, 21, 18, 19, 20]
-        if self.N_NODES == 116:
-            points_to_use = np.arange(0,117)
-        elif self.N_NODES == 47:
-            points_to_use = np.concatenate([np.arange(95, 116), np.arange(74, 95), np.arange(0,5)])
-        # Calculate points_not_use as all points from 0-116 that are not in points_to_use
-        all_points = set(range(116))
-        points_not_use = sorted(list(list(all_points - set(points_to_use)) + points_not_use))
+        # Indexes for reduction of graph nodes of graph size 27 nodes, predefined in holistic mediapipe package
+        points_to_use = set(range(133)) - set([0, 1, 2, 3, 4, 9, 10, 13, 14, 15, 17, 16, 22, 21, 18, 19, 20])
 
+        if self.N_NODES == 47:
+            points_to_use = set(np.concatenate([np.arange(74, 116), np.arange(0,5)]))
+        elif self.N_NODES == 2:
+            points_to_use = set([96, 97, 98])
+        # Calculate points_not_use as all points from 0-116 that are not in points_to_use
+        
         reduced_frames = []
         for frame in frames:
-            reduced_frame, self.keep_indices, old_to_new, new_to_old = self.reduce_keypoints(frame, points_not_use)
+            reduced_frame, self.keep_indices, old_to_new, new_to_old = self.reduce_keypoints(frame, points_to_use)
             reduced_frames.append(reduced_frame)
+
         
         # Stack the numpy arrays first, then convert to tensor
         reduced_frames = np.stack(reduced_frames)
+        
         return torch.tensor(reduced_frames, dtype=torch.float32)
 
     #--------------------------------------
@@ -212,16 +212,19 @@ class ISRDataReader:
 
             # number of frames per gloss
             n_frames = data['node_pos'].shape[1]
+            
             if n_frames > max_frames_count:
                 max_frames_count = n_frames
-            end_idx = int(n_frames*self.N_NODES)
+            end_idx = int((n_frames)*self.N_NODES)
 
             if n_frames < self.max_frames:
-                spatial_edges =  graph_constructor.spatial_edges[:int(n_frames*graph_constructor.n_spatial_edges),:]
+                spatial_edges =  graph_constructor.spatial_edges[:int((n_frames-1)*graph_constructor.n_spatial_edges),:]
                 spatial_edges = spatial_edges.t().contiguous()
                 temporal_edges = graph_constructor.temporal_edges[:int((n_frames-1)*graph_constructor.n_temporal_edges),:]
                 temporal_edges = temporal_edges.t().contiguous()
-
+               
+                
+                
             else: 
                 spatial_edges =  graph_constructor.spatial_edges[:int(self.max_frames*graph_constructor.n_spatial_edges),:]
                 spatial_edges = spatial_edges.t().contiguous()
@@ -236,8 +239,14 @@ class ISRDataReader:
 
             # Get positions
             pos = graph_constructor.reshape_nodes(data['node_pos'])
+            
+            
+            #x, pos = self.add_padding(x, pos)
 
             #x, pos = self.add_padding(x, pos)
+            
+
+            
             graph_dict[vid_id] = {
                 'label': data['label'],
                 'gloss': data['gloss'],
@@ -276,51 +285,48 @@ class SpatioTemporalGraphBuilder:
         self.N_NODES          = args.n_nodes
         self.tot_number_nodes = self.max_n_frames * self.N_NODES
 
-        if inward_edges is None:
-            ## Default holistic mediapipe edges
-            self.inward_edges =[
-                            [5, 6], [5, 7], [5, 11],
-                            [6, 8], [6, 12],
-                            [7, 91],
-                            [8, 112],
-                            [11, 12],
-                            [13, 15],
-                            [15, 17], [15, 18], [15, 19],
-                            [91, 92], [91, 96], [91, 100], [91, 104], [91, 108],
-                            [92, 93], [93, 94], [94, 95],
-                            [96, 97], [97, 98], [98, 99],
-                            [100, 101], [101, 102], [102, 103],
-                            [104, 105], [105, 106], [106, 107],
-                            [108, 109], [109, 110], [110, 111],
-                            [112, 113], [112, 117], [112, 121], [112, 125], [112, 129],
-                            [113, 114], [114, 115], [115, 116],
-                            [117, 118], [118, 119], [119, 120],
-                            [121, 122], [122, 123], [123, 124],
-                            [125, 126], [126, 127], [127, 128],
-                            [129, 130], [130, 131], [131, 132],
-                            # Face
-                            [50,51], [51,52], [52,53], [53,54], [54,55], [55,56], [56,57], [57,58],  # Nose
-                            [59,60], [60,61], [61,62], [62,63], [63,64], [64,59], [59, 23],          # Right eye + jaw link
-                            [23, 24], [24, 25], [25, 26], [26, 27], [27, 28],                         # Jaw
-                            [28, 29], [29, 30], [30, 31], [31, 32], [32, 33],                         # Jaw
-                            [33, 34], [34, 35], [35, 36], [36, 37], [37, 38], [38, 39],               # Jaw
-                            [40, 41], [41, 42], [42, 43], [43, 44],                                   # Right brow
-                            [45, 46], [46, 47], [47, 48], [48, 49],                                   # Left brow
-                            [65,66], [66,67], [67,68], [68,69], [69,70], [70,65],                     # Left eye
-                            [71,72], [72,73], [73,74], [74,75], [75,76], [76,77], [77,78], [78,79],
-                            [79,80], [80,81], [81,82], [82,71],                                       # Outer mouth
-                            [83,84], [84,85], [85,86], [86,87], [87,88], [88,89], [89,90], [90,83],   # Inner mouth
-                            [49, 68], [40, 59], [50, 65], [50, 62], [39, 68], [39, 78], [23, 72],
-                            [54, 75], [75, 86], [80, 31],                                             # Other face connections
-                            # Global connections to face (from shoulders)
-                            [6, 31], [5, 31]
-                        ]
-            self.inward_edges = self.reduce_edges(self.inward_edges, sort_and_dedupe=True)
+        self.inward_edges =[
+                        [5, 6], [5, 7], [5, 11],
+                        [6, 8], [6, 12],
+                        [7, 91],
+                        [8, 112],
+                        [11, 12],
+                        [13, 15],
+                        [15, 17], [15, 18], [15, 19],
+                        [91, 92], [91, 96], [91, 100], [91, 104], [91, 108],
+                        [92, 93], [93, 94], [94, 95],
+                        [96, 97], [97, 98], [98, 99],
+                        [100, 101], [101, 102], [102, 103],
+                        [104, 105], [105, 106], [106, 107],
+                        [108, 109], [109, 110], [110, 111],
+                        [112, 113], [112, 117], [112, 121], [112, 125], [112, 129],
+                        [113, 114], [114, 115], [115, 116],
+                        [117, 118], [118, 119], [119, 120],
+                        [121, 122], [122, 123], [123, 124],
+                        [125, 126], [126, 127], [127, 128],
+                        [129, 130], [130, 131], [131, 132],
+                        # Face
+                        [50,51], [51,52], [52,53], [53,54], [54,55], [55,56], [56,57], [57,58],  # Nose
+                        [59,60], [60,61], [61,62], [62,63], [63,64], [64,59], [59, 23],          # Right eye + jaw link
+                        [23, 24], [24, 25], [25, 26], [26, 27], [27, 28],                         # Jaw
+                        [28, 29], [29, 30], [30, 31], [31, 32], [32, 33],                         # Jaw
+                        [33, 34], [34, 35], [35, 36], [36, 37], [37, 38], [38, 39],               # Jaw
+                        [40, 41], [41, 42], [42, 43], [43, 44],                                   # Right brow
+                        [45, 46], [46, 47], [47, 48], [48, 49],                                   # Left brow
+                        [65,66], [66,67], [67,68], [68,69], [69,70], [70,65],                     # Left eye
+                        [71,72], [72,73], [73,74], [74,75], [75,76], [76,77], [77,78], [78,79],
+                        [79,80], [80,81], [81,82], [82,71],                                       # Outer mouth
+                        [83,84], [84,85], [85,86], [86,87], [87,88], [88,89], [89,90], [90,83],   # Inner mouth
+                        [49, 68], [40, 59], [50, 65], [50, 62], [39, 68], [39, 78], [23, 72],
+                        [54, 75], [75, 86], [80, 31],                                             # Other face connections
+                        # Global connections to face (from shoulders)
+                        [6, 31], [5, 31]
+                    ]
+        self.inward_edges = self.reduce_edges(self.inward_edges, sort_and_dedupe=True)
+
 
             
-        else:
-            self.inward_edges = inward_edges
-            
+        
         self.n_spatial_edges = len(self.inward_edges)
         self.n_temporal_edges = self.N_NODES
 
@@ -336,6 +342,7 @@ class SpatioTemporalGraphBuilder:
         Drops any edge that references a removed node.
         Optionally sorts each pair low→high and dedupes + lexicographically sorts the list.
         """
+        
         remapped: List[List[int]] = []
         for i, j in edges_original:
             if i in self.old_to_new and j in self.old_to_new:
@@ -348,7 +355,7 @@ class SpatioTemporalGraphBuilder:
         if sort_and_dedupe:
             remapped = sorted(set(tuple(e) for e in remapped))
             remapped = [list(e) for e in remapped]
-
+        
         return remapped
             
     def _build_node_features(self):
@@ -381,6 +388,7 @@ class SpatioTemporalGraphBuilder:
 
         self.spatial_edges = torch.tensor(spatial_edges)
 
+
         # Adding temporal edges
         temporal_edges = []
         for frame in range(self.max_n_frames - 1):
@@ -408,6 +416,7 @@ class ISRDataLoader:
                                 [7, 8], [7, 9], [9, 10], [7, 11], [11, 12], [7, 13], [13, 14], 
                                 [7, 15], [15, 16], [17, 18], [17, 19], [19, 20], [17, 21], [21, 22], 
                                 [17, 23], [23, 24], [17, 25], [25, 26]]
+            
             self.edge_index = torch.tensor(self.inward_edges, dtype=torch.long).t().contiguous()
         
         self.build_loaders()
@@ -435,6 +444,8 @@ class ISRDataLoader:
             x = data['x']
             if self.args.temporal_configuration == 'spatio_temporal':
                 self.edge_index = data['edges']
+                
+            
             
             data_list.append(Data(pos = pos, x = x, edge_index= self.edge_index, y=y, n_frames = data['n_frames'], view = 1))
            

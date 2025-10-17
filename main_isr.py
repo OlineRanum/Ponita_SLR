@@ -48,7 +48,7 @@ if __name__ == "__main__":
                         help='logging flag')
     parser.add_argument('--enable_progress_bar', type=eval, default=True,
                         help='enable progress bar')
-    parser.add_argument('--num_workers', type=int, default=10,
+    parser.add_argument('--num_workers', type=int, default=6,
                         help='Num workers in dataloader')
     parser.add_argument('--seed', type=int, default=0,
                         help='Random seed')
@@ -97,11 +97,11 @@ if __name__ == "__main__":
                         help='Metadata json file location')
     parser.add_argument('--root_poses', type=str, default="/home/or0007/gitlab/beyondbleu/out/features/H2S/h2s_", #train_features.pkl",
                         help='Pose data dir location')
-    parser.add_argument('--n_classes', type=str, default=2,
+    parser.add_argument('--n_classes', type=str, default=133,
                         help='Number of sign classes')
     parser.add_argument('--temporal_configuration', type=str, default="spatio_temporal",
                         help='Temporal configuration of the graph. Options: spatio_temporal, per_frame') 
-    parser.add_argument('--n_nodes', type=int, default=47,
+    parser.add_argument('--n_nodes', type=int, default=2,
                         help='Number of nodes to use when reducing the graph - only 27 currently implemented')
     parser.add_argument('--scale_norm', type=eval, default=False,
                         help='If to apply scale and normalization') 
