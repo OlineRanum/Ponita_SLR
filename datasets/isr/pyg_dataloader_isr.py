@@ -170,12 +170,14 @@ class ISRDataReader:
         """ Downsample pose graph based on the standard node selection from holistic 27 minimal node set
         """
         # Indexes for reduction of graph nodes of graph size 27 nodes, predefined in holistic mediapipe package
-        points_to_use = set(range(133)) - set([0, 1, 2, 3, 4, 9, 10, 13, 14, 15, 17, 16, 22, 21, 18, 19, 20])
-
+        points_to_use = set(range(133)) - set([0, 1, 2, 3, 4, 9, 10, 13, 14, 15, 17, 16, 22, 21, 18, 19, 20]) 
         if self.N_NODES == 47:
-            points_to_use = set(np.concatenate([np.arange(74, 116), np.arange(0,5)]))
+            points_to_use = set(np.concatenate([np.arange(91, 133), np.arange(5,9), np.arange(11,13)]))
+
         elif self.N_NODES == 2:
-            points_to_use = set([96, 97, 98])
+            points_to_use = set([112, 91])
+        elif self.N_NODES == 68:
+            points_to_use = set(np.arange(23,91))
         # Calculate points_not_use as all points from 0-116 that are not in points_to_use
         
         reduced_frames = []
@@ -320,7 +322,9 @@ class SpatioTemporalGraphBuilder:
                         [49, 68], [40, 59], [50, 65], [50, 62], [39, 68], [39, 78], [23, 72],
                         [54, 75], [75, 86], [80, 31],                                             # Other face connections
                         # Global connections to face (from shoulders)
-                        [6, 31], [5, 31]
+                        [6, 31], [5, 31],
+                        # Intra hands
+                        [112, 91]
                     ]
         self.inward_edges = self.reduce_edges(self.inward_edges, sort_and_dedupe=True)
 
